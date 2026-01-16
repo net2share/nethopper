@@ -1,0 +1,8 @@
+# This directory contains embedded sing-box binaries
+# In CI, download pre-built binaries here before building net2share
+# Files:
+#   - sing-box-linux-amd64
+#   - sing-box-linux-arm64
+#   - sing-box-darwin-amd64
+#   - sing-box-darwin-arm64
+#   - sing-box-windows-amd64.exe
