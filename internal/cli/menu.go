@@ -36,6 +36,8 @@ func runInteractiveMenu() {
 		case 0:
 			if runtime.GOOS != "linux" {
 				Error("Server mode is only supported on Linux (current: %s)", runtime.GOOS)
+				fmt.Println("Press Enter to continue...")
+				fmt.Scanln()
 				continue
 			}
 			runServerMenu()

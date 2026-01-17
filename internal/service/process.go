@@ -134,8 +134,8 @@ func CheckBinary(path string) error {
 		return fmt.Errorf("%s is a directory, not a file", path)
 	}
 
-	// Check if executable
-	if info.Mode()&0111 == 0 {
+	// Check if executable (platform-specific)
+	if !isExecutable(info) {
 		return fmt.Errorf("binary at %s is not executable", path)
 	}
 
