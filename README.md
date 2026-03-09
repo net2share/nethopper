@@ -70,6 +70,13 @@ On the server, the binary is copied to `/usr/local/bin/xray` so the systemd serv
   - **Restricted**: connected to the restricted network (tunnel to server goes through here)
 - On Linux, `sudo` is needed once during install to set `CAP_NET_RAW` on the xray binary (required for interface binding)
 
+## Usage Modes
+
+Both `nhserver` and `nhclient` can be used in two ways:
+
+- **Interactive TUI**: Run without arguments (`sudo nhserver` or `nhclient`) to launch a menu-driven interface that guides you through each step.
+- **CLI**: Use subcommands directly (e.g., `sudo nhserver install`, `nhclient configure ...`) for scripting or quick usage.
+
 ## Quick Start
 
 ### 1. Install and Set Up the Server
@@ -77,6 +84,8 @@ On the server, the binary is copied to `/usr/local/bin/xray` so the systemd serv
 ```bash
 sudo nhserver install
 ```
+
+Or via TUI: run `sudo nhserver` and select **Install**.
 
 This downloads Xray, generates config with a random UUID, creates a systemd service, and configures the firewall.
 
@@ -86,6 +95,8 @@ This downloads Xray, generates config with a random UUID, creates a systemd serv
 sudo nhserver status
 ```
 
+Or via TUI: run `sudo nhserver` and select **Status**.
+
 Copy the connection string (`nh://...`).
 
 ### 3. Install the Client
@@ -93,6 +104,8 @@ Copy the connection string (`nh://...`).
 ```bash
 nhclient install
 ```
+
+Or via TUI: run `nhclient` and select **Install**.
 
 Downloads the Xray binary and sets `CAP_NET_RAW` capability (prompts for sudo on Linux).
 
@@ -102,7 +115,7 @@ Downloads the Xray binary and sets `CAP_NET_RAW` capability (prompts for sudo on
 nhclient configure -c "nh://..." -f <free-interface> -r <restricted-interface>
 ```
 
-Or run `nhclient` for the interactive TUI which guides you through interface selection.
+Or via TUI: run `nhclient` and select **Configure** — it will prompt for the connection string and guide you through interface selection.
 
 ### 5. Run the Client
 
@@ -110,17 +123,18 @@ Or run `nhclient` for the interactive TUI which guides you through interface sel
 nhclient run
 ```
 
+Or via TUI: run `nhclient` and select **Run**.
+
 ### 6. Use the Proxy
 
 Configure apps to use the SOCKS5 proxy at `<server-ip>:1080`.
 
-## Usage
-
-Both binaries support interactive TUI mode (run without arguments) and CLI mode.
+## CLI Reference
 
 ### Server Commands
 
 ```bash
+sudo nhserver                      # Launch interactive TUI
 sudo nhserver install              # Download xray, create service, configure firewall
 sudo nhserver configure            # Update ports interactively
 sudo nhserver configure --socks-port 8080 --tunnel-port 3000
@@ -131,6 +145,7 @@ sudo nhserver uninstall --force    # Remove everything
 ### Client Commands
 
 ```bash
+nhclient                                                  # Launch interactive TUI
 nhclient install                                          # Download xray + set capabilities
 nhclient configure -c "nh://..." -f wlan0 -r eth0        # Configure with connection string and interfaces
 nhclient run                                              # Start bridge (foreground)
