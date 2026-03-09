@@ -1,6 +1,6 @@
 # Artifacts
-nhserver
-nhclient
+/nhserver
+/nhclient
 dist/
 
 # AI Agents
