@@ -1,0 +1,8 @@
+# Artifacts
+nhserver
+nhclient
+dist/
+
+# AI Agents
+CLAUDE.md
+claude.md
