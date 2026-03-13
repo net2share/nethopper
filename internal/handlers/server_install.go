@@ -13,9 +13,139 @@ import (
 	"github.com/net2share/nethopper/internal/firewall"
 	"github.com/net2share/nethopper/internal/service"
 	"github.com/net2share/nethopper/internal/xray"
+	"github.com/net2share/nethopper/internal/xui"
 )
 
 func HandleServerInstall(ctx *actions.Context) error {
+	xuiMode := false
+	if ctx.IsInteractive {
+		xuiMode = ctx.GetString("install-mode") == "xui"
+	} else {
+		xuiMode = xui.IsXUIRunning() && !ctx.GetBool("standalone")
+	}
+
+	if xuiMode {
+		return handleXUIInstall(ctx)
+	}
+	return handleStandaloneInstall(ctx)
+}
+
+func handleXUIInstall(ctx *actions.Context) error {
+	// Validate credentials
+	user := ctx.GetString("xui-user")
+	pass := ctx.GetString("xui-pass")
+	if !ctx.IsInteractive && (user == "" || pass == "") {
+		return fmt.Errorf("x-ui detected: --xui-user and --xui-pass are required")
+	}
+
+	beginProgress(ctx, "Installing via x-ui")
+
+	// Step 1: Read panel info
+	ctx.Output.Step(1, 7, "Reading x-ui panel configuration")
+	panelInfo, err := xui.ReadPanelInfo()
+	if err != nil {
+		return failProgress(ctx, fmt.Errorf("failed to read x-ui settings: %w", err))
+	}
+	ctx.Output.Success(fmt.Sprintf("Panel found at %s", panelInfo.BaseURL))
+
+	// Step 2: Authenticate
+	ctx.Output.Step(2, 7, "Authenticating with x-ui panel")
+	client := xui.NewClient(panelInfo)
+	if err := client.Login(user, pass); err != nil {
+		return failProgress(ctx, fmt.Errorf("authentication failed: %w", err))
+	}
+	ctx.Output.Success("Authenticated")
+
+	// Step 3: Select/validate ports
+	ctx.Output.Step(3, 7, "Selecting ports")
+	socksPort := ctx.GetInt("socks-port")
+	tunnelPort := ctx.GetInt("tunnel-port")
+	if socksPort == 0 {
+		if p, err := randomAvailablePort(); err == nil {
+			socksPort = p
+		} else {
+			return failProgress(ctx, fmt.Errorf("failed to find available port: %w", err))
+		}
+	} else if !isPortAvailable(socksPort) {
+		return failProgress(ctx, fmt.Errorf("SOCKS5 port %d is not available", socksPort))
+	}
+	if tunnelPort == 0 {
+		if p, err := randomAvailablePort(); err == nil {
+			tunnelPort = p
+		} else {
+			return failProgress(ctx, fmt.Errorf("failed to find available port: %w", err))
+		}
+	} else if !isPortAvailable(tunnelPort) {
+		return failProgress(ctx, fmt.Errorf("tunnel port %d is not available", tunnelPort))
+	}
+	ctx.Output.Success(fmt.Sprintf("SOCKS5: %d, Tunnel: %d", socksPort, tunnelPort))
+
+	// Step 4: Generate UUID + add inbounds
+	ctx.Output.Step(4, 7, "Creating inbounds in x-ui")
+	uuid, err := generateUUID()
+	if err != nil {
+		return failProgress(ctx, fmt.Errorf("failed to generate UUID: %w", err))
+	}
+	socksID, socksTag, err := client.AddSocksInbound(socksPort)
+	if err != nil {
+		return failProgress(ctx, err)
+	}
+	tunnelID, tunnelTag, err := client.AddVLESSInbound(tunnelPort, uuid)
+	if err != nil {
+		// Clean up the socks inbound we just created
+		client.DeleteInbound(socksID)
+		return failProgress(ctx, err)
+	}
+	ctx.Output.Success(fmt.Sprintf("Inbounds created (SOCKS5: #%d, Tunnel: #%d)", socksID, tunnelID))
+
+	// Step 5: Update xray template (portal + routing)
+	ctx.Output.Step(5, 7, "Configuring reverse portal")
+	xrayCfg, err := client.GetXrayConfig()
+	if err != nil {
+		return failProgress(ctx, err)
+	}
+	xui.AddPortalAndRouting(xrayCfg, socksTag, tunnelTag)
+	if err := client.SaveXrayConfig(xrayCfg); err != nil {
+		return failProgress(ctx, err)
+	}
+	if err := client.RestartXray(); err != nil {
+		ctx.Output.Warning(fmt.Sprintf("Failed to restart xray: %v", err))
+	}
+	ctx.Output.Success("Reverse portal configured")
+
+	// Step 6: Configure firewall
+	ctx.Output.Step(6, 7, "Configuring firewall")
+	fm := firewall.DetectFirewall()
+	ports := []uint16{uint16(socksPort), uint16(tunnelPort)}
+	if err := firewall.AllowPorts(fm, ports, "tcp", "nethopper"); err != nil {
+		ctx.Output.Warning(fmt.Sprintf("Firewall configuration failed: %v", err))
+	} else {
+		ctx.Output.Success(fmt.Sprintf("Firewall configured (%s)", fm.Type()))
+	}
+
+	// Step 7: Save config
+	ctx.Output.Step(7, 7, "Saving configuration")
+	serverCfg := &config.ServerConfig{
+		SocksPort:          socksPort,
+		TunnelPort:         tunnelPort,
+		UUID:               uuid,
+		XUIMode:            true,
+		XUISocksInboundID:  socksID,
+		XUITunnelInboundID: tunnelID,
+		XUISocksTag:        socksTag,
+		XUITunnelTag:       tunnelTag,
+		XUIPortalTag:       xui.NHPortalTag,
+	}
+	if err := config.SaveJSON(config.ServerConfigPath(), serverCfg); err != nil {
+		return failProgress(ctx, fmt.Errorf("failed to save config: %w", err))
+	}
+	ctx.Output.Success("Configuration saved")
+
+	endProgress(ctx)
+	return nil
+}
+
+func handleStandaloneInstall(ctx *actions.Context) error {
 	beginProgress(ctx, "Installing Nethopper Server")
 
 	// Step 1: Download/ensure xray binary
@@ -44,9 +174,26 @@ func HandleServerInstall(ctx *actions.Context) error {
 		return failProgress(ctx, fmt.Errorf("failed to generate UUID: %w", err))
 	}
 
+	socksPort := ctx.GetInt("socks-port")
+	tunnelPort := ctx.GetInt("tunnel-port")
+	if socksPort == 0 {
+		if p, err := randomAvailablePort(); err == nil {
+			socksPort = p
+		} else {
+			socksPort = 1080
+		}
+	}
+	if tunnelPort == 0 {
+		if p, err := randomAvailablePort(); err == nil {
+			tunnelPort = p
+		} else {
+			tunnelPort = 2083
+		}
+	}
+
 	serverCfg := &config.ServerConfig{
-		SocksPort:  1080,
-		TunnelPort: 2083,
+		SocksPort:  socksPort,
+		TunnelPort: tunnelPort,
 		UUID:       uuid,
 	}
 
@@ -62,16 +209,14 @@ func HandleServerInstall(ctx *actions.Context) error {
 	if err := writeFile(config.ServerXrayConfigPath(), xrayCfg); err != nil {
 		return failProgress(ctx, fmt.Errorf("failed to write xray config: %w", err))
 	}
-	// Set ownership so the nethopper service user can read config
 	exec.Command("chown", "-R", "nethopper:nethopper", config.ServerConfigDir).Run()
-
 	ctx.Output.Success("Configuration saved")
 
 	// Step 3: Configure firewall
 	ctx.Output.Step(3, 5, "Configuring firewall")
 	fm := firewall.DetectFirewall()
-	ports := []uint16{uint16(serverCfg.SocksPort), uint16(serverCfg.TunnelPort)}
-	if err := firewall.AllowPorts(fm, ports, "tcp", "nethopper"); err != nil {
+	fwPorts := []uint16{uint16(serverCfg.SocksPort), uint16(serverCfg.TunnelPort)}
+	if err := firewall.AllowPorts(fm, fwPorts, "tcp", "nethopper"); err != nil {
 		ctx.Output.Warning(fmt.Sprintf("Firewall configuration failed: %v", err))
 	} else {
 		ctx.Output.Success(fmt.Sprintf("Firewall configured (%s)", fm.Type()))

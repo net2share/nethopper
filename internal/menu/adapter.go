@@ -6,8 +6,10 @@ import (
 
 	"github.com/net2share/go-corelib/tui"
 	"github.com/net2share/nethopper/internal/actions"
+	"github.com/net2share/nethopper/internal/config"
 	"github.com/net2share/nethopper/internal/handlers"
 	"github.com/net2share/nethopper/internal/network"
+	"github.com/net2share/nethopper/internal/xui"
 )
 
 // RunAction executes an action in interactive mode.
@@ -59,6 +61,17 @@ func RunAction(actionID string, inline ...bool) error {
 
 // collectInputs collects action inputs interactively via TUI forms.
 func collectInputs(ctx *actions.Context, action *actions.Action) error {
+	// Pre-populate detection state for ShowIf functions
+	switch action.ID {
+	case actions.ActionServerInstall:
+		ctx.Set("xui-detected", xui.IsXUIRunning())
+	case actions.ActionServerConfigure, actions.ActionServerUninstall:
+		var cfg config.ServerConfig
+		if config.LoadJSON(config.ServerConfigPath(), &cfg) == nil {
+			ctx.Set("xui-mode", cfg.XUIMode)
+		}
+	}
+
 	for _, input := range action.Inputs {
 		if input.ShowIf != nil && !input.ShowIf(ctx) {
 			continue

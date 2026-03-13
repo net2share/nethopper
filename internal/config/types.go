@@ -9,9 +9,15 @@ import (
 
 // ServerConfig holds server-side configuration.
 type ServerConfig struct {
-	SocksPort  int    `json:"socks_port"`
-	TunnelPort int    `json:"tunnel_port"`
-	UUID       string `json:"uuid"`
+	SocksPort          int    `json:"socks_port"`
+	TunnelPort         int    `json:"tunnel_port"`
+	UUID               string `json:"uuid"`
+	XUIMode            bool   `json:"xui_mode,omitempty"`
+	XUISocksInboundID  int    `json:"xui_socks_inbound_id,omitempty"`
+	XUITunnelInboundID int    `json:"xui_tunnel_inbound_id,omitempty"`
+	XUISocksTag        string `json:"xui_socks_tag,omitempty"`
+	XUITunnelTag       string `json:"xui_tunnel_tag,omitempty"`
+	XUIPortalTag       string `json:"xui_portal_tag,omitempty"`
 }
 
 // ClientConfig holds client-side configuration.

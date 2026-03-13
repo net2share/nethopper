@@ -82,6 +82,27 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+// randomAvailablePort finds a random available TCP port.
+func randomAvailablePort() (int, error) {
+	l, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return 0, err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	l.Close()
+	return port, nil
+}
+
+// isPortAvailable checks if a specific TCP port is available for binding.
+func isPortAvailable(port int) bool {
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
+}
+
 // writeFile writes data to a file, creating parent directories as needed.
 func writeFile(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
