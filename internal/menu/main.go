@@ -62,10 +62,10 @@ func runServerMenu() error {
 		state := getServerState()
 		var options []tui.MenuOption
 
-		if !state.hasBinary {
+		if !state.hasConfig {
 			options = append(options, tui.MenuOption{Label: "Install", Value: actions.ActionServerInstall})
 		}
-		if state.hasBinary {
+		if state.hasConfig {
 			options = append(options, tui.MenuOption{Label: "Configure", Value: actions.ActionServerConfigure})
 		}
 		if state.isInstalled() {

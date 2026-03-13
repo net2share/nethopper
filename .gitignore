@@ -3,6 +3,9 @@
 /nhclient
 dist/
 
+# Configurations
+*.json
+
 # AI Agents
 CLAUDE.md
 claude.md
