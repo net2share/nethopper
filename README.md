@@ -17,12 +17,11 @@ Nethopper enables users in a restricted network to access the internet through a
 │   (SOCKS5 client)             (Linux VM)              (Bridge PC)   │
 │        │                          │                        │        │
 │        │ SOCKS5                   │ VLESS Reverse          │        │
-│        │ :1080                    │ Tunnel :2083           │        │
-│        ▼                          │                        │        │
+│        ▼                          │ Tunnel                 │        │
 │  ┌────────────────────────────────┤                        │        │
 │  │     RESTRICTED NETWORK         │◄───────────────────────┤        │
 │  │                                │   restricted interface │        │
-│  │  Users connect to Server:1080  │                        │        │
+│  │  Users connect to server       │                        │        │
 │  │  via SOCKS5 proxy              │                        │        │
 │  └────────────────────────────────┤                        │        │
 │                                   │                        │        │
@@ -36,8 +35,8 @@ Nethopper enables users in a restricted network to access the internet through a
 └─────────────────────────────────────────────────────────────────────┘
 
 Data flow:
-1. App → SOCKS5 (:1080) → nhserver
-2. nhserver (Portal) → VLESS reverse tunnel (:2083) → nhclient (Bridge)
+1. App → SOCKS5 → nhserver
+2. nhserver (Portal) → VLESS reverse tunnel → nhclient (Bridge)
 3. nhclient → free interface → Internet
 ```
 
@@ -45,17 +44,24 @@ Data flow:
 
 | Component | Binary | Platforms | Description |
 |-----------|--------|-----------|-------------|
-| Server | `nhserver` | Linux | Xray portal + SOCKS5 inbound, runs as systemd service |
+| Server | `nhserver` | Linux | Xray portal + SOCKS5 inbound (standalone or via x-ui) |
 | Client | `nhclient` | Linux, macOS, Windows | Xray bridge, connects to server, routes via free interface |
 
-Xray-core is downloaded automatically on first install. Set `NETHOPPER_XRAY_PATH` to use a local binary instead:
+### Server Modes
+
+- **Standalone**: Downloads Xray, creates a systemd service, and manages everything independently.
+- **x-ui integration**: Delegates inbound and Xray management to an existing [3x-ui](https://github.com/MHSanaei/3x-ui) panel. Nethopper creates SOCKS5 and VLESS inbounds via the x-ui API and adds portal/routing rules to x-ui's Xray config. No separate Xray binary or systemd service is needed.
+
+If x-ui is detected on the system, the TUI will prompt you to choose the mode. In CLI mode, x-ui integration is used automatically unless `--standalone` is passed.
+
+Ports are assigned randomly by default. You can override them with `--socks-port` and `--tunnel-port`.
+
+In standalone mode, Xray-core is downloaded automatically on first install. Set `NETHOPPER_XRAY_PATH` to use a local binary instead:
 
 ```bash
 sudo NETHOPPER_XRAY_PATH=/path/to/xray nhserver install
 NETHOPPER_XRAY_PATH=/path/to/xray nhclient install
 ```
-
-On the server, the binary is copied to `/usr/local/bin/xray` so the systemd service can access it regardless of where the original is located.
 
 ## Requirements
 
@@ -82,12 +88,19 @@ Both `nhserver` and `nhclient` can be used in two ways:
 ### 1. Install and Set Up the Server
 
 ```bash
+# Standalone (or auto-detect x-ui)
 sudo nhserver install
+
+# Explicitly standalone even if x-ui is present
+sudo nhserver install --standalone
+
+# x-ui integration with custom ports
+sudo nhserver install --xui-user admin --xui-pass secret --socks-port 8080 --tunnel-port 3000
 ```
 
 Or via TUI: run `sudo nhserver` and select **Install**.
 
-This downloads Xray, generates config with a random UUID, creates a systemd service, and configures the firewall.
+Standalone mode downloads Xray, generates config with a random UUID, creates a systemd service, and configures the firewall. x-ui mode creates inbounds and routing rules through the panel API instead.
 
 ### 2. Get the Connection String
 
@@ -127,7 +140,7 @@ Or via TUI: run `nhclient` and select **Run**.
 
 ### 6. Use the Proxy
 
-Configure apps to use the SOCKS5 proxy at `<server-ip>:1080`.
+Configure apps to use the SOCKS5 proxy at `<server-ip>:<socks-port>`. Check `sudo nhserver status` for the assigned port.
 
 ## CLI Reference
 
@@ -135,11 +148,16 @@ Configure apps to use the SOCKS5 proxy at `<server-ip>:1080`.
 
 ```bash
 sudo nhserver                      # Launch interactive TUI
-sudo nhserver install              # Download xray, create service, configure firewall
+sudo nhserver install              # Install (auto-detects x-ui)
+sudo nhserver install --standalone # Force standalone mode
+sudo nhserver install --xui-user admin --xui-pass secret  # x-ui mode with credentials
+sudo nhserver install --socks-port 8080 --tunnel-port 3000  # Custom ports
 sudo nhserver configure            # Update ports interactively
 sudo nhserver configure --socks-port 8080 --tunnel-port 3000
+sudo nhserver configure --xui-user admin --xui-pass secret  # Required in x-ui mode
 sudo nhserver status               # Show status and connection string
 sudo nhserver uninstall --force    # Remove everything
+sudo nhserver uninstall --keep-xui # Remove nethopper config but keep x-ui inbounds
 ```
 
 ### Client Commands
@@ -161,21 +179,28 @@ The `nh://` connection string encodes server details for easy sharing:
 {
   "v": 1,
   "s": "192.168.1.100",
-  "p": 2083,
-  "sp": 1080,
+  "p": 54321,
+  "sp": 12345,
   "u": "uuid-here"
 }
 ```
 
 ## File Locations
 
-### Server (Linux, root)
+### Server — Standalone (Linux, root)
 | File | Path |
 |------|------|
 | Xray binary | `/usr/local/bin/xray` |
 | Server config | `/etc/nethopper/server.json` |
 | Xray config | `/etc/nethopper/xray.json` |
 | Systemd service | `/etc/systemd/system/nethopper.service` |
+
+### Server — x-ui mode (Linux, root)
+| File | Path |
+|------|------|
+| Server config | `/etc/nethopper/server.json` |
+
+Xray binary and service are managed by x-ui. Inbounds and routing rules live in x-ui's database/config.
 
 ### Client (user-level)
 | Platform | Binary | Config |
